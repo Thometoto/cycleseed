@@ -1,0 +1,11 @@
+{
+  "name": "CycleSeed",
+  "short_name": "CycleSeed",
+  "description": "Private, experimental symptothermal cycle tracking on your device.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f4ef",
+  "theme_color": "#315f50",
+  "lang": "en"
+}
