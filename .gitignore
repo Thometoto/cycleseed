@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+data/*.csv
+!data/synthetic_5000_days.csv
+data/profile.json
+models/*.json
+output/*.csv
+output/*.json
+tmp/

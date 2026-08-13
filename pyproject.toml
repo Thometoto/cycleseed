@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cycleseed"
+version = "0.1.0"
+description = "CycleSeed: an experimental, privacy-first symptothermal cycle tracker"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+sympto-collect = "symptothermal.collect:main"
+sympto-train = "symptothermal.train:main"
+sympto-follow = "symptothermal.follow:main"
+sympto-gui = "symptothermal.web_gui:main"
+cycleseed = "symptothermal.web_gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
