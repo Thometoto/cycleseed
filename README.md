@@ -44,6 +44,18 @@ The command-line workflow remains available:
 
 On the first follow-up, CycleSeed asks for the approximate current cycle day, approximate phase, and average cycle length. Results remain marked as theoretical until one complete personal cycle has been observed.
 
+## iPad progressive web app
+
+The `pwa/` directory contains a separate browser-only edition designed for private testing on iPad. It can be hosted free of charge with GitHub Pages and added to the iPad Home Screen from Safari.
+
+- Observations and profile data stay in the browser storage of that iPad.
+- The app works offline after its first successful visit.
+- JSON backup and CSV export make it possible to transfer observations for later research.
+- Removing the app, clearing Safari website data, or losing the iPad can erase local observations, so regular exports are essential.
+- The embedded model is a browser-compatible copy of the experimental logistic-regression model; no Python server is involved.
+
+The included GitHub Pages workflow deploys `pwa/` after it is merged into `main` and Pages is configured to use **GitHub Actions** in the repository settings.
+
 ## Optional installation
 
 ```bash

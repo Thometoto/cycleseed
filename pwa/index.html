@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#315f50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CycleSeed">
+  <title>CycleSeed</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body><main>
+  <header><div><div class="eyebrow">Private cycle journal</div><h1>CycleSeed</h1><p>Daily symptothermal tracking, directly on this device.</p></div><div class="privacy">No account · No cloud database · Works offline after the first visit</div></header>
+
+  <section class="card">
+    <div class="setup" id="setup"><strong>First use</strong><p>Your starting point remains theoretical until a complete cycle is observed.</p><div class="grid">
+      <label>Approximate cycle day<input id="initialDay" type="number" min="1" max="90" value="1"></label>
+      <label>Approximate phase<select id="initialPhase"><option>UNKNOWN</option><option>MENSTRUATION</option><option>FOLLICULAR</option><option>OVULATORY</option><option>LUTEAL</option></select></label>
+      <label>Average cycle length<input id="averageLength" type="number" min="15" max="90" value="30"></label>
+    </div></div>
+    <h2>Today's observation</h2>
+    <form id="observationForm"><div class="grid">
+      <label>Date<input id="date" type="date" required></label>
+      <label>Basal temperature (°C)<input id="temperature" type="number" inputmode="decimal" step="0.01" min="34" max="42" placeholder="36.65"></label>
+      <label>Cervical mucus<select id="mucus"><option>DRY</option><option>STICKY</option><option>CREAMY</option><option>WATERY</option><option>EGG_WHITE</option></select></label>
+      <label>PMS<select id="pms"><option value="unknown">Unknown</option><option value="false">No</option><option value="true">Yes</option></select></label>
+      <label id="flowLabel">Menstrual flow<select id="flow"><option>LIGHT</option><option selected>MEDIUM</option><option>HEAVY</option></select></label>
+    </div><div class="checks">
+      <label class="check"><input id="disturbed" type="checkbox"> Disturbed reading</label>
+      <label class="check"><input id="menstrual" type="checkbox"> Menstruation today</label>
+    </div><button class="primary" type="submit">Save and analyze</button><div class="status" id="status"></div></form>
+  </section>
+
+  <section class="card result" id="result"><h2>Current estimate</h2><div class="metrics" id="metrics"></div><div class="notice" id="explanation"></div></section>
+  <section class="card result" id="chartSection"><h2>Cycle progress</h2><div class="chart-wrap"><canvas class="chart" id="chart"></canvas></div><div class="legend"><span><i class="dot MENSTRUATION"></i>Menstruation</span><span><i class="dot FOLLICULAR"></i>Follicular</span><span><i class="dot OVULATION"></i>Ovulation</span><span><i class="dot LUTEAL"></i>Luteal</span></div></section>
+  <section class="card result" id="calendarSection"><h2>Phase calendar</h2><div class="calendar" id="calendar"></div></section>
+  <section class="card"><h2>Backup and transfer</h2><p>Export regularly. The backup contains health data—store and share it carefully.</p><div class="actions"><button class="secondary" id="exportJson">Export backup</button><button class="secondary" id="exportCsv">Export CSV</button><label class="button secondary">Import backup<input id="importJson" type="file" accept="application/json" hidden></label></div></section>
+  <p class="warning">Experimental prototype. Not a medical device or validated contraceptive method. Do not use it to decide that unprotected intercourse is safe.</p>
+</main><script src="app.js"></script></body></html>
