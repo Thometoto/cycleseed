@@ -20,6 +20,7 @@ class DailyObservation:
     pms: Optional[bool] = None
     menstrual: bool = False
     menstrual_flow: str = "NONE"
+    spotting: bool = False
     cycle_id: str = ""
     cycle_day: Optional[int] = None
     synthetic_label_fertile: Optional[int] = None
@@ -36,6 +37,8 @@ class DailyObservation:
             raise ValueError("Invalid menstrual flow.")
         if not self.menstrual and self.menstrual_flow != "NONE":
             raise ValueError("Menstrual flow cannot be recorded when menstruation is absent.")
+        if self.menstrual and self.spotting:
+            raise ValueError("Spotting and menstruation cannot both be recorded for the same day.")
 
 
 def _parse_optional_float(value: str) -> Optional[float]:
@@ -70,6 +73,7 @@ def read_observations(path: Path) -> List[DailyObservation]:
                 pms=_parse_optional_bool(row.get("pms", "")),
                 menstrual=_parse_bool(row.get("menstrual", row.get("menstruation", ""))),
                 menstrual_flow=row.get("menstrual_flow", "NONE") or "NONE",
+                spotting=_parse_bool(row.get("spotting", "")),
                 cycle_id=row.get("cycle_id", ""),
                 cycle_day=_parse_optional_int(row.get("cycle_day", "")),
                 synthetic_label_fertile=_parse_optional_int(row.get("synthetic_label_fertile", "")),

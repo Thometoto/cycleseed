@@ -7,7 +7,7 @@ CycleSeed is an experimental, privacy-first symptothermal cycle tracker. It reco
 
 ## Features
 
-- Records the date, basal temperature, cervical mucus, disturbed readings, PMS, menstruation, and menstrual flow.
+- Records the date, basal temperature, cervical mucus, disturbed readings, PMS, menstruation, menstrual flow, and spotting.
 - Stores health data locally in CSV and JSON files.
 - Trains an interpretable online logistic-regression classifier without third-party dependencies.
 - Combines model predictions with explicit thermal-shift and cervical-mucus heuristics.
@@ -75,6 +75,8 @@ python3 -m venv .venv
 - `output/forecast.csv`: experimental calendar forecast.
 
 Personal and synthetic observations remain separate. Personal observations are never treated as ground truth unless a completed cycle can be labeled retrospectively by the current research heuristic.
+
+Spotting is stored as a separate tracking-only observation. It does not start a new cycle and is not currently used as a model feature.
 
 ## Model
 

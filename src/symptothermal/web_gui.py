@@ -31,6 +31,7 @@ class EntryValues:
     pms: Optional[bool]
     menstrual: bool
     menstrual_flow: str
+    spotting: bool = False
 
 
 def save_daily_observation(values: EntryValues, path: Path = DATA_FILE) -> DailyObservation:
@@ -52,6 +53,7 @@ def save_daily_observation(values: EntryValues, path: Path = DATA_FILE) -> Daily
         pms=values.pms,
         menstrual=values.menstrual,
         menstrual_flow=values.menstrual_flow if values.menstrual else "NONE",
+        spotting=values.spotting and not values.menstrual,
         cycle_id=cycle_id,
     )
     observation.validate()
@@ -163,6 +165,7 @@ HTML = r'''<!doctype html>
     <label>PMS<select id="pms"><option value="unknown">Unknown</option><option value="false">No</option><option value="true">Yes</option></select></label>
     <label class="check"><input id="disturbed" type="checkbox"> Disturbed reading</label>
     <label class="check"><input id="menstrual" type="checkbox"> Menstruation today</label>
+    <label class="check"><input id="spotting" type="checkbox"> Spotting today</label>
     <label id="flowLabel">Flow<select id="flow"><option value="LIGHT">Light</option><option value="MEDIUM" selected>Medium</option><option value="HEAVY">Heavy</option></select></label>
   </div>
   <div class="init" id="init"><strong>First use</strong><div class="hint">These details remain theoretical until one complete cycle has been observed.</div><div class="grid">
@@ -182,14 +185,14 @@ HTML = r'''<!doctype html>
 <script>
 const $=id=>document.getElementById(id), form=$('form'), status=$('status'), button=$('submit');
 $('date').value=new Date().toISOString().slice(0,10);
-function toggleFlow(){$('flowLabel').style.display=$('menstrual').checked?'grid':'none'} $('menstrual').onchange=toggleFlow;toggleFlow();
+function toggleFlow(){if($('menstrual').checked)$('spotting').checked=false;$('flowLabel').style.display=$('menstrual').checked?'grid':'none'} $('menstrual').onchange=toggleFlow;toggleFlow();
 function list(id,items){$(id).innerHTML=(items?.length?items:['None']).map(x=>`<li>${escapeHtml(x)}</li>`).join('')}
 function escapeHtml(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function drawChart(v){const c=$('cycleChart'),ctx=c.getContext('2d'),dpr=window.devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const pad={l:46,r:16,t:20,b:40},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,maxDay=v.average_cycle_length,colors={MENSTRUATION:'#f8b5ad',FOLLICULAR:'#f3bad8',OVULATION:'#fae7a7',LUTEAL:'#b8def2'};const x=d=>pad.l+(d-1)/Math.max(1,maxDay-1)*pw;const bands=[[1,5,'MENSTRUATION'],[6,Math.max(6,v.ovulation_start_day-1),'FOLLICULAR'],[v.ovulation_start_day,v.ovulation_end_day,'OVULATION'],[v.ovulation_end_day+1,maxDay,'LUTEAL']];bands.forEach(([a,b,p])=>{if(b<a)return;ctx.fillStyle=colors[p];ctx.globalAlpha=.72;ctx.fillRect(x(a),pad.t,Math.max(2,x(b+1)-x(a)),ph);ctx.globalAlpha=1});const temps=v.temperature_points.map(p=>p.temperature).filter(Number.isFinite),lo=temps.length?Math.floor((Math.min(...temps)-.15)*10)/10:36.0,hi=temps.length?Math.ceil((Math.max(...temps)+.15)*10)/10:37.2,y=t=>pad.t+(hi-t)/(hi-lo||1)*ph;ctx.strokeStyle='#ffffffaa';ctx.lineWidth=1;for(let t=lo;t<=hi+.001;t+=.2){ctx.beginPath();ctx.moveTo(pad.l,y(t));ctx.lineTo(w-pad.r,y(t));ctx.stroke();ctx.fillStyle='#64716c';ctx.font='11px sans-serif';ctx.fillText(t.toFixed(1),4,y(t)+4)}ctx.strokeStyle='#26312d';ctx.lineWidth=3;ctx.lineJoin='round';ctx.beginPath();let started=false;v.temperature_points.forEach(p=>{if(p.day<1||p.day>maxDay)return;started?ctx.lineTo(x(p.day),y(p.temperature)):ctx.moveTo(x(p.day),y(p.temperature));started=true});if(started)ctx.stroke();v.temperature_points.forEach(p=>{if(p.day<1||p.day>maxDay)return;ctx.beginPath();ctx.fillStyle=p.disturbed?'#a3453c':'#26312d';ctx.arc(x(p.day),y(p.temperature),4,0,Math.PI*2);ctx.fill()});ctx.setLineDash([5,4]);ctx.strokeStyle='#26312d';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x(v.current_cycle_day),pad.t);ctx.lineTo(x(v.current_cycle_day),pad.t+ph);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#26312d';ctx.font='12px sans-serif';ctx.fillText(`Today · D${v.current_cycle_day}`,Math.min(w-110,x(v.current_cycle_day)+5),pad.t+14);ctx.fillText('D1',pad.l,pad.t+ph+23);ctx.fillText(`D${maxDay}`,w-pad.r-24,pad.t+ph+23)}
 function drawCalendar(v){const names=['January','February','March','April','May','June','July','August','September','October','November','December'],week=['M','T','W','T','F','S','S'],groups={};v.calendar_days.forEach(d=>{const key=d.date.slice(0,7);(groups[key]??=[]).push(d)});$('months').innerHTML=Object.entries(groups).map(([key,days])=>{const [year,month]=key.split('-').map(Number),first=new Date(`${key}-01T12:00:00`),offset=(first.getDay()+6)%7,blanks='<div class="day empty"></div>'.repeat(offset),cells=days.map(d=>`<div class="day ${d.phase} ${d.observed?'observed':''} ${d.estimated?'estimated':''} ${d.today?'today':''}" title="${d.phase} · cycle day ${d.cycle_day}">${d.day}</div>`).join('');return `<section class="month"><h3>${names[month-1]} ${year}</h3><div class="week">${week.map(x=>`<div>${x}</div>`).join('')}</div><div class="days">${blanks}${cells}</div></section>`}).join('')}
 function show(payload){const r=payload.today||payload,v=payload.visualization||r.visualization;const fields=[['Cycle day',r.cycle_day],['Estimated phase',r.cycle_phase],['Fertility',r.fertility_status],['Pregnancy timing',r.baby_timing],['Theoretical estimate',r.theoretical_estimate?'YES':'NO'],['Estimated ovulation',`${r.estimated_ovulation_start} → ${r.estimated_ovulation_end}`]];$('metrics').innerHTML=fields.map(([a,b])=>`<div class="metric">${escapeHtml(a)}<b>${escapeHtml(b)}</b></div>`).join('');list('evidence',r.evidence);list('warnings',r.warnings);$('result').style.display='block';if(v){$('viz').style.display='block';drawChart(v);drawCalendar(v)}}
 fetch('/api/state').then(r=>r.json()).then(s=>{ $('init').style.display=s.profile_exists?'none':'block'; if(s.today)show(s); if(!s.model_exists)status.innerHTML='<span class="error">Model not found. Run train_model.py first.</span>' });
-form.onsubmit=async e=>{e.preventDefault();button.disabled=true;status.textContent='Analyzing…';const temp=$('temperature').value.trim().replace(',','.');const payload={date:$('date').value,temperature:temp===''?null:Number(temp),mucus_type:$('mucus').value,disturbed:$('disturbed').checked,pms:$('pms').value,menstrual:$('menstrual').checked,menstrual_flow:$('menstrual').checked?$('flow').value:'NONE',initial_cycle_day:Number($('cycleDay').value),initial_phase:$('phase').value,average_cycle_length:Number($('average').value)};try{const response=await fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw Error(body.error||'Unknown error');show(body);$('init').style.display='none';status.textContent='Observation saved and analysis complete.'}catch(err){status.innerHTML=`<span class="error">${escapeHtml(err.message)}</span>`}finally{button.disabled=false}};
+form.onsubmit=async e=>{e.preventDefault();button.disabled=true;status.textContent='Analyzing…';const temp=$('temperature').value.trim().replace(',','.');const payload={date:$('date').value,temperature:temp===''?null:Number(temp),mucus_type:$('mucus').value,disturbed:$('disturbed').checked,pms:$('pms').value,menstrual:$('menstrual').checked,spotting:!$('menstrual').checked&&$('spotting').checked,menstrual_flow:$('menstrual').checked?$('flow').value:'NONE',initial_cycle_day:Number($('cycleDay').value),initial_phase:$('phase').value,average_cycle_length:Number($('average').value)};try{const response=await fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw Error(body.error||'Unknown error');show(body);$('init').style.display='none';status.textContent='Observation saved and analysis complete.'}catch(err){status.innerHTML=`<span class="error">${escapeHtml(err.message)}</span>`}finally{button.disabled=false}};
 window.addEventListener('resize',()=>{fetch('/api/state').then(r=>r.json()).then(s=>{if(s.visualization)drawChart(s.visualization)})});
 </script></body></html>'''
 
@@ -235,6 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                 observation_date=payload["date"], temperature=payload.get("temperature"),
                 mucus_type=payload["mucus_type"], disturbed=bool(payload["disturbed"]), pms=pms,
                 menstrual=bool(payload["menstrual"]), menstrual_flow=payload["menstrual_flow"],
+                spotting=bool(payload.get("spotting", False)),
             ))
             if not PROFILE_FILE.exists():
                 day, average = int(payload["initial_cycle_day"]), int(payload["average_cycle_length"])

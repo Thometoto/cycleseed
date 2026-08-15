@@ -35,6 +35,7 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
     existing = read_observations(args.file)
     menstruation = _yes_no("Menstruation today?")
+    spotting = _yes_no("Spotting today?") if not menstruation else False
     menstrual_flow = _choice("Menstrual flow", MENSTRUAL_FLOWS[1:], "MEDIUM") if menstruation else "NONE"
     menstruation_started = menstruation and (not existing or not existing[-1].menstrual)
     if not existing or args.new_cycle or menstruation_started:
@@ -57,6 +58,7 @@ def main(argv=None) -> None:
         pms=_optional_yes_no("Premenstrual symptoms (PMS) today?"),
         menstrual=menstruation,
         menstrual_flow=menstrual_flow,
+        spotting=spotting,
         cycle_id=cycle_id,
     )
     observation.validate()
