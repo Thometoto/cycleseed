@@ -16,7 +16,7 @@ class CoreTests(unittest.TestCase):
     def test_csv_round_trip(self):
         observations = [DailyObservation(
             date="2026-08-11", temperature_c=36.45, mucus_type="CREAMY",
-            disturbed=True, menstrual=True, menstrual_flow="MEDIUM",
+            disturbed=True, menstrual=True, menstrual_flow="MEDIUM", spotting=False,
         )]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "observations.csv"
@@ -27,16 +27,18 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(loaded[0].disturbed)
         self.assertTrue(loaded[0].menstrual)
         self.assertEqual(loaded[0].menstrual_flow, "MEDIUM")
+        self.assertFalse(loaded[0].spotting)
 
     def test_gui_layer_saves_with_core_schema(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "personal.csv"
             saved = save_daily_observation(EntryValues(
                 observation_date="2026-08-11", temperature=36.7, mucus_type="STICKY",
-                disturbed=False, pms=None, menstrual=False, menstrual_flow="NONE",
+                disturbed=False, pms=None, menstrual=False, menstrual_flow="NONE", spotting=True,
             ), path)
             loaded = read_observations(path)
         self.assertEqual(saved.cycle_id, "personal-0001")
+        self.assertTrue(saved.spotting)
         self.assertEqual(loaded[0].temperature_c, 36.7)
 
     def test_synthetic_data_is_reproducible_and_coherent(self):

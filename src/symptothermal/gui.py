@@ -32,6 +32,7 @@ class EntryValues:
     pms: Optional[bool]
     menstrual: bool
     menstrual_flow: str
+    spotting: bool = False
 
 
 def save_daily_observation(values: EntryValues, path: Path = DATA_FILE) -> DailyObservation:
@@ -53,6 +54,7 @@ def save_daily_observation(values: EntryValues, path: Path = DATA_FILE) -> Daily
         pms=values.pms,
         menstrual=values.menstrual,
         menstrual_flow=values.menstrual_flow if values.menstrual else "NONE",
+        spotting=values.spotting and not values.menstrual,
         cycle_id=cycle_id,
     )
     observation.validate()
@@ -144,6 +146,7 @@ class SymptothermalApp(tk.Tk):
         self.disturbed = tk.BooleanVar(value=False)
         self.pms = tk.StringVar(value="Unknown")
         self.menstrual = tk.BooleanVar(value=False)
+        self.spotting = tk.BooleanVar(value=False)
         self.flow = tk.StringVar(value="MEDIUM")
 
         fields = (
@@ -162,11 +165,14 @@ class SymptothermalApp(tk.Tk):
         ttk.Checkbutton(
             form, text="Menstruation today", variable=self.menstrual, command=self._toggle_flow
         ).grid(row=5, column=0, columnspan=2, sticky="w", pady=6)
-        ttk.Label(form, text="Flow").grid(row=6, column=0, sticky="w", padx=(0, 16), pady=6)
+        ttk.Checkbutton(form, text="Spotting today", variable=self.spotting).grid(
+            row=6, column=0, columnspan=2, sticky="w", pady=6
+        )
+        ttk.Label(form, text="Flow").grid(row=7, column=0, sticky="w", padx=(0, 16), pady=6)
         self.flow_widget = ttk.Combobox(
             form, textvariable=self.flow, values=MENSTRUAL_FLOWS[1:], state="readonly"
         )
-        self.flow_widget.grid(row=6, column=1, sticky="ew", pady=6)
+        self.flow_widget.grid(row=7, column=1, sticky="ew", pady=6)
 
         actions = ttk.Frame(root)
         actions.pack(fill="x", pady=18)
@@ -185,6 +191,8 @@ class SymptothermalApp(tk.Tk):
         ttk.Label(root, textvariable=self.status).pack(anchor="w", pady=(8, 0))
 
     def _toggle_flow(self) -> None:
+        if self.menstrual.get():
+            self.spotting.set(False)
         self.flow_widget.configure(state="readonly" if self.menstrual.get() else "disabled")
 
     def _entry_values(self) -> EntryValues:
@@ -195,6 +203,7 @@ class SymptothermalApp(tk.Tk):
             temperature=float(raw_temperature) if raw_temperature else None,
             mucus_type=self.mucus.get(), disturbed=self.disturbed.get(), pms=pms,
             menstrual=self.menstrual.get(), menstrual_flow=self.flow.get(),
+            spotting=self.spotting.get(),
         )
 
     def _save(self) -> bool:

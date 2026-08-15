@@ -181,6 +181,8 @@ def estimate_today(
     if today.menstrual:
         cycle_phase = "MENSTRUATION_OBSERVED"
         evidence.append("Menstruation was reported today; flow is stored for tracking only.")
+    elif today.spotting:
+        evidence.append("Spotting was reported today; it is stored for tracking and does not start a new cycle.")
     cycle_start = date.fromisoformat(today.date) - timedelta(days=day - 1)
     if shift is not None and thermal_days >= 3:
         # Once a sustained shift is visible, physiology overrides the calendar prior.

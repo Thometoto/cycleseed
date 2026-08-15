@@ -78,6 +78,7 @@ function analyze(observation){
     phase=reported[state.profile.initialPhase]; phaseShort=state.profile.initialPhase==="OVULATORY"?"OVULATION":state.profile.initialPhase;
   } else { phase=prob>=.65?"OVULATORY_WINDOW_POSSIBLE":"FOLLICULAR_PHASE_OR_UNCERTAIN"; phaseShort=prob>=.65?"OVULATION":"FOLLICULAR"; }
   const lower=shift&&info.day-shift+1>=3?Math.max(1,shift-2):Math.max(1,expected-6), upper=shift&&info.day-shift+1>=3?shift:expected+6;
+  if(observation.spotting && !observation.menstrual) evidence.push("Spotting was reported today; it is stored for tracking and does not start a new cycle.");
   const ovStart=addDays(info.start,lower-1), ovEnd=addDays(info.start,upper-1), current=dateAtNoon(observation.date);
   const favorable=current>=addDays(ovStart,-2)&&current<=addDays(ovEnd,1)&&prob>=.65;
   const possible=current>=addDays(ovStart,-5)&&current<=addDays(ovEnd,1)&&confidence<.8;
@@ -111,14 +112,14 @@ function drawCalendar(result){
 }
 
 function download(name,type,text){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function csv(){const fields=["date","temperature_c","mucus_type","disturbed","pms","menstrual","menstrual_flow","cycle_id","cycle_day","synthetic_label_fertile","synthetic_ovulation_day","synthetic_phase_label"];const rows=state.observations.map(o=>{const info=cycleInfo(o);return[o.date,o.temperature_c??"",o.mucus_type,o.disturbed,o.pms??"",o.menstrual,o.menstrual_flow,"personal-ipad",info.day,"","",""]});return[fields,...rows].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");}
+function csv(){const fields=["date","temperature_c","mucus_type","disturbed","pms","menstrual","menstrual_flow","spotting","cycle_id","cycle_day","synthetic_label_fertile","synthetic_ovulation_day","synthetic_phase_label"];const rows=state.observations.map(o=>{const info=cycleInfo(o);return[o.date,o.temperature_c??"",o.mucus_type,o.disturbed,o.pms??"",o.menstrual,o.menstrual_flow,o.spotting??false,"personal-ipad",info.day,"","",""]});return[fields,...rows].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");}
 
 $("date").value=isoToday();$("setup").style.display=state.profile?"none":"block";$("flowLabel").style.display="none";
-$("menstrual").addEventListener("change",()=>$("flowLabel").style.display=$("menstrual").checked?"grid":"none");
+$("menstrual").addEventListener("change",()=>{if($("menstrual").checked)$("spotting").checked=false;$("flowLabel").style.display=$("menstrual").checked?"grid":"none"});
 $("observationForm").addEventListener("submit",event=>{event.preventDefault();
   if(!state.profile){const day=Number($("initialDay").value),average=Number($("averageLength").value);if(day<1||day>90||average<15||average>90)return $("status").textContent="Check the first-use values.";state.profile={anchorDate:$("date").value,anchorCycleDay:day,initialPhase:$("initialPhase").value,averageCycleLength:average,theoretical:true};}
   const temp=$("temperature").value===""?null:Number($("temperature").value);if(temp!=null&&(temp<34||temp>42))return $("status").textContent="Temperature must be between 34 and 42 °C.";
-  const observation={date:$("date").value,temperature_c:temp,mucus_type:$("mucus").value,disturbed:$("disturbed").checked,pms:$("pms").value==="unknown"?null:$("pms").value==="true",menstrual:$("menstrual").checked,menstrual_flow:$("menstrual").checked?$("flow").value:"NONE"};
+  const observation={date:$("date").value,temperature_c:temp,mucus_type:$("mucus").value,disturbed:$("disturbed").checked,pms:$("pms").value==="unknown"?null:$("pms").value==="true",menstrual:$("menstrual").checked,menstrual_flow:$("menstrual").checked?$("flow").value:"NONE",spotting:!$("menstrual").checked&&$("spotting").checked};
   const previous=state.observations.filter(o=>o.date<observation.date).sort((a,b)=>a.date.localeCompare(b.date)).at(-1);
   if(observation.menstrual && previous && !previous.menstrual && state.observations.some(o=>o.menstrual)) state.profile.theoretical=false;
   state.observations=state.observations.filter(o=>o.date!==observation.date);state.observations.push(observation);state.observations.sort((a,b)=>a.date.localeCompare(b.date));save(state);$("setup").style.display="none";$("status").textContent="Observation saved on this device.";render(analyze(observation));
