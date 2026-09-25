@@ -52,6 +52,8 @@ The `pwa/` directory contains a separate browser-only edition designed for priva
 - The app works offline after its first successful visit.
 - Every **Save and analyze** action also downloads a timestamped JSON backup containing the full profile and observation history.
 - JSON and CycleSeed CSV files can both be restored from the **Restore a backup** control; CSV export remains available for later research.
+- Completed personal cycles calibrate the displayed cycle length, menstrual duration, and estimated ovulation phase; the wider fertile uncertainty window remains separate from the three-day ovulation display.
+- The **Add 6 PM reminder** control creates a recurring local Calendar reminder that continues to work while the web app is closed.
 - Removing the app, clearing Safari website data, or losing the iPad can still erase browser storage. Keep at least one downloaded backup in Files or another private location.
 - If browser storage is corrupt or unavailable, CycleSeed locks data entry and shows a recovery message instead of silently starting a new profile.
 - The embedded model is a browser-compatible copy of the experimental logistic-regression model; no Python server is involved.

@@ -63,6 +63,26 @@ function thermalShift(cycle){
   return null;
 }
 
+function median(values){const sorted=[...values].sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2;}
+function menstrualStarts(referenceDate="9999-12-31"){
+  const sorted=state.observations.filter(o=>o.date<=referenceDate).sort((a,b)=>a.date.localeCompare(b.date));
+  return sorted.filter((item,index)=>item.menstrual&&(index===0||!sorted[index-1].menstrual||dayDiff(item.date,sorted[index-1].date)!==1)).map(item=>item.date);
+}
+function personalCalibration(referenceDate){
+  const starts=menstrualStarts(referenceDate),completed=[];
+  for(let i=0;i<starts.length-1;i++){
+    const length=dayDiff(starts[i+1],starts[i]);if(length<15||length>60)continue;
+    const observations=state.observations.filter(o=>o.date>=starts[i]&&o.date<starts[i+1]).sort((a,b)=>a.date.localeCompare(b.date)).map(o=>({...o,cycle_day:1+dayDiff(o.date,starts[i])}));
+    const shift=thermalShift(observations),ovulationDay=shift?Math.max(1,shift-1):null;
+    let menstrualDays=0;for(const item of observations){if(item.cycle_day===menstrualDays+1&&item.menstrual)menstrualDays++;else if(item.cycle_day>menstrualDays)break;}
+    completed.push({length,ovulationDay,menstrualDays});
+  }
+  const recent=completed.slice(-6),average=recent.length?Math.round(mean(recent.map(c=>c.length))):state.profile.averageCycleLength;
+  const lutealLengths=recent.filter(c=>c.ovulationDay).map(c=>c.length-c.ovulationDay),luteal=lutealLengths.length?clamp(Math.round(median(lutealLengths)),9,16):12;
+  const expected=clamp(average-luteal,6,Math.max(6,average-5)),menstrual=recent.some(c=>c.menstrualDays)?Math.round(median(recent.filter(c=>c.menstrualDays).map(c=>c.menstrualDays))):5;
+  return {average,expected,menstrual:clamp(menstrual,1,8),uncertainty:recent.length>=3?1:2,completedCount:recent.length};
+}
+
 function features(cycle,index,expected){
   const o=cycle[index], previous=cycle.slice(Math.max(0,index-6),index).filter(x=>x.temperature_c!=null&&!x.disturbed).map(x=>x.temperature_c);
   const baseline=previous.length>=3?mean(previous):o.temperature_c;
@@ -77,7 +97,7 @@ function probability(values){
 }
 
 function analyze(observation){
-  const info=cycleInfo(observation), cycle=currentCycle(observation), average=state.profile.averageCycleLength, expected=Math.max(6,average-12);
+  const info=cycleInfo(observation), cycle=currentCycle(observation),calibration=personalCalibration(observation.date),average=calibration.average,expected=calibration.expected;
   let prob=probability(features(cycle,cycle.length-1,expected));
   const shift=thermalShift(cycle), peak=Math.max(0,...cycle.filter(o=>["WATERY","EGG_WHITE"].includes(o.mucus_type)).map(o=>o.cycle_day));
   let confidence=0; const evidence=[];
@@ -89,16 +109,23 @@ function analyze(observation){
   let phase,phaseShort;
   if(observation.menstrual){ phase="MENSTRUATION_OBSERVED"; phaseShort="MENSTRUATION"; }
   else if(confidence>=.8){ phase="LUTEAL_PHASE_SUPPORTED"; phaseShort="LUTEAL"; }
-  else if(state.profile.theoretical){
+  else if(state.profile.theoretical&&calibration.completedCount===0){
     const reported={MENSTRUATION:"MENSTRUATION_REPORTED",FOLLICULAR:"FOLLICULAR_PHASE_REPORTED",OVULATORY:"OVULATORY_WINDOW_REPORTED",LUTEAL:"LUTEAL_PHASE_REPORTED_UNCONFIRMED",UNKNOWN:"PHASE_UNCERTAIN"};
     phase=reported[state.profile.initialPhase]; phaseShort=state.profile.initialPhase==="OVULATORY"?"OVULATION":state.profile.initialPhase;
-  } else { phase=prob>=.65?"OVULATORY_WINDOW_POSSIBLE":"FOLLICULAR_PHASE_OR_UNCERTAIN"; phaseShort=prob>=.65?"OVULATION":"FOLLICULAR"; }
-  const lower=shift&&info.day-shift+1>=3?Math.max(1,shift-2):Math.max(1,expected-6), upper=shift&&info.day-shift+1>=3?shift:expected+6;
+  } else {
+    const estimatedOvulation=shift&&info.day-shift+1>=3?Math.max(1,shift-1):expected;
+    if(info.day>=estimatedOvulation-1&&info.day<=estimatedOvulation+1){phase="OVULATORY_PHASE_ESTIMATED";phaseShort="OVULATION";}
+    else if(info.day>estimatedOvulation+1){phase="LUTEAL_PHASE_ESTIMATED";phaseShort="LUTEAL";}
+    else {phase="FOLLICULAR_PHASE_ESTIMATED";phaseShort="FOLLICULAR";}
+  }
+  const confirmedShift=shift&&info.day-shift+1>=3,estimatedOvulation=confirmedShift?Math.max(1,shift-1):expected;
+  const lower=Math.max(1,estimatedOvulation-1),upper=Math.min(average,estimatedOvulation+1),fertileStart=Math.max(1,estimatedOvulation-5-calibration.uncertainty),fertileEnd=Math.min(average,estimatedOvulation+1+calibration.uncertainty);
   if(observation.spotting && !observation.menstrual) evidence.push("Spotting was reported today; it is stored for tracking and does not start a new cycle.");
   const ovStart=addDays(info.start,lower-1), ovEnd=addDays(info.start,upper-1), current=dateAtNoon(observation.date);
-  const favorable=current>=addDays(ovStart,-2)&&current<=addDays(ovEnd,1)&&prob>=.65;
-  const possible=current>=addDays(ovStart,-5)&&current<=addDays(ovEnd,1)&&confidence<.8;
-  return {date:observation.date,cycle_day:info.day,cycle_start:info.start,cycle_phase:phase,phase_short:phaseShort,fertility_status:prob>=MODEL.threshold||confidence<.8?"POTENTIALLY_FERTILE":"FERTILITY_NOT_CURRENTLY_DETECTED",baby_timing:favorable?"FAVORABLE":possible?"POSSIBLE":"OUTSIDE_ESTIMATED_WINDOW",model_probability:prob,confidence,ovulation_start_day:lower,ovulation_end_day:upper,evidence,theoretical:state.profile.theoretical,average};
+  const fertileStartDate=addDays(info.start,fertileStart-1),fertileEndDate=addDays(info.start,fertileEnd-1),favorable=current>=addDays(ovStart,-2)&&current<=addDays(ovEnd,1)&&prob>=.65;
+  const possible=current>=fertileStartDate&&current<=fertileEndDate&&confidence<.8;
+  if(calibration.completedCount===1)evidence.push("The calendar is calibrated from one completed personal cycle and remains uncertain.");
+  return {date:observation.date,cycle_day:info.day,cycle_start:info.start,cycle_phase:phase,phase_short:phaseShort,fertility_status:prob>=MODEL.threshold||confidence<.8?"POTENTIALLY_FERTILE":"FERTILITY_NOT_CURRENTLY_DETECTED",baby_timing:favorable?"FAVORABLE":possible?"POSSIBLE":"OUTSIDE_ESTIMATED_WINDOW",model_probability:prob,confidence,ovulation_start_day:lower,ovulation_end_day:upper,fertile_start_day:fertileStart,fertile_end_day:fertileEnd,menstrual_days:calibration.menstrual,completed_cycles:calibration.completedCount,evidence,theoretical:state.profile.theoretical&&calibration.completedCount===0,average};
 }
 
 function render(result){
@@ -109,7 +136,7 @@ function render(result){
   drawChart(result); drawCalendar(result);
 }
 
-function phaseForDay(day,result){ if(day<=5)return"MENSTRUATION";if(day<result.ovulation_start_day)return"FOLLICULAR";if(day<=result.ovulation_end_day)return"OVULATION";return"LUTEAL"; }
+function phaseForDay(day,result){ if(day<=result.menstrual_days)return"MENSTRUATION";if(day<result.ovulation_start_day)return"FOLLICULAR";if(day<=result.ovulation_end_day)return"OVULATION";return"LUTEAL"; }
 function drawChart(result){
   const c=$("chart"),ctx=c.getContext("2d"),ratio=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*ratio;c.height=h*ratio;ctx.scale(ratio,ratio);
   const pad={l:44,r:14,t:18,b:35},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,max=result.average,x=d=>pad.l+(d-1)/(max-1)*pw;
@@ -130,6 +157,10 @@ function drawCalendar(result){
 function backupStamp(){const now=new Date();return `${isoToday()}-${String(now.getHours()).padStart(2,"0")}-${String(now.getMinutes()).padStart(2,"0")}-${String(now.getSeconds()).padStart(2,"0")}`;}
 function download(name,type,text){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement("a");a.href=url;a.download=name;a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function downloadBackup(){download(`cycleseed-backup-${backupStamp()}.json`,"application/json",JSON.stringify(state,null,2));}
+function reminderCalendar(){
+  const start=isoToday().replaceAll("-","")+"T180000",created=new Date().toISOString().replaceAll("-","").replaceAll(":","").replace(/\.\d{3}/,"");
+  return ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CycleSeed//Daily Reminder//EN","CALSCALE:GREGORIAN","BEGIN:VEVENT","UID:cycleseed-daily-reminder@thometoto.github.io",`DTSTAMP:${created}`,`DTSTART:${start}`,"RRULE:FREQ=DAILY","DURATION:PT5M","SUMMARY:CycleSeed daily observation","DESCRIPTION:Record today's CycleSeed observation.","BEGIN:VALARM","ACTION:DISPLAY","TRIGGER:-PT0M","DESCRIPTION:CycleSeed daily observation","END:VALARM","END:VEVENT","END:VCALENDAR",""] .join("\r\n");
+}
 function csv(){const fields=["date","temperature_c","mucus_type","disturbed","pms","menstrual","menstrual_flow","spotting","cycle_id","cycle_day","synthetic_label_fertile","synthetic_ovulation_day","synthetic_phase_label"];const rows=state.observations.map(o=>{const info=cycleInfo(o);return[o.date,o.temperature_c??"",o.mucus_type,o.disturbed,o.pms??"",o.menstrual,o.menstrual_flow,o.spotting??false,"personal-ipad",info.day,"","",""]});return[fields,...rows].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");}
 
 function parseCsv(text){
@@ -189,6 +220,7 @@ $("observationForm").addEventListener("submit",event=>{event.preventDefault();
 });
 $("exportJson").addEventListener("click",downloadBackup);
 $("exportCsv").addEventListener("click",()=>download(`cycleseed-observations-${isoToday()}.csv`,"text/csv",csv()));
+$("dailyReminder").addEventListener("click",()=>{download("cycleseed-daily-reminder.ics","text/calendar",reminderCalendar());$("reminderStatus").textContent="Reminder downloaded. Open the file and add the recurring event to Calendar, with Calendar notifications enabled.";});
 $("importBackup").addEventListener("change",async event=>{try{const file=event.target.files[0];if(!file)return;const text=await file.text();let incoming;if(file.name.toLowerCase().endsWith(".csv")){incoming=stateFromCsv(text);}else{incoming=JSON.parse(text);if(!incoming.profile||!Array.isArray(incoming.observations))throw Error();}save(incoming);state=incoming;storageError=null;downloadBackup();location.reload()}catch{alert("This is not a valid CycleSeed JSON or CSV backup, or device storage is unavailable.");}finally{event.target.value="";}});
 if(storageError){$("status").textContent=storageError;$("observationForm").querySelectorAll("input, select, button").forEach(element=>element.disabled=true);}
 if(state.observations.length) render(analyze(state.observations.at(-1)));
