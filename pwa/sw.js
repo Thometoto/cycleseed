@@ -1,4 +1,4 @@
-const CACHE = "cycleseed-pwa-v4";
+const CACHE = "cycleseed-pwa-v5";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {

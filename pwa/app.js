@@ -156,7 +156,14 @@ function drawCalendar(result){
 
 function backupStamp(){const now=new Date();return `${isoToday()}-${String(now.getHours()).padStart(2,"0")}-${String(now.getMinutes()).padStart(2,"0")}-${String(now.getSeconds()).padStart(2,"0")}`;}
 function download(name,type,text){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement("a");a.href=url;a.download=name;a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function downloadBackup(){download(`cycleseed-backup-${backupStamp()}.json`,"application/json",JSON.stringify(state,null,2));}
+const BACKUP_INTERVAL_MS=7*24*60*60*1000;
+function backupDue(now=Date.now()){const previous=Date.parse(state.lastBackupRequestedAt||"");return !Number.isFinite(previous)||now-previous>=BACKUP_INTERVAL_MS;}
+function backupScheduleText(){
+  const previous=Date.parse(state.lastBackupRequestedAt||"");
+  if(!Number.isFinite(previous))return "A weekly backup will be downloaded with the next saved observation.";
+  const next=new Date(previous+BACKUP_INTERVAL_MS);return `Next weekly backup: ${next.toLocaleDateString("en",{day:"numeric",month:"short",year:"numeric"})}, with the first observation saved on or after that date.`;
+}
+function downloadBackup(){if(storageError)return alert("Device storage is unreadable. Restore a valid backup before creating a new one.");state.lastBackupRequestedAt=new Date().toISOString();save(state);download(`cycleseed-backup-${backupStamp()}.json`,"application/json",JSON.stringify(state,null,2));updateStorageStatus();}
 function reminderCalendar(){
   const start=isoToday().replaceAll("-","")+"T180000",created=new Date().toISOString().replaceAll("-","").replaceAll(":","").replace(/\.\d{3}/,"");
   return ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CycleSeed//Daily Reminder//EN","CALSCALE:GREGORIAN","BEGIN:VEVENT","UID:cycleseed-daily-reminder@thometoto.github.io",`DTSTAMP:${created}`,`DTSTART:${start}`,"RRULE:FREQ=DAILY","DURATION:PT5M","SUMMARY:CycleSeed daily observation","DESCRIPTION:Record today's CycleSeed observation.","BEGIN:VALARM","ACTION:DISPLAY","TRIGGER:-PT0M","DESCRIPTION:CycleSeed daily observation","END:VALARM","END:VEVENT","END:VCALENDAR",""] .join("\r\n");
@@ -197,7 +204,7 @@ async function updateStorageStatus(requestPersistence=false){
   try {
     let persistent=await navigator.storage.persisted();
     if(!persistent&&requestPersistence&&navigator.storage.persist)persistent=await navigator.storage.persist();
-    element.textContent=persistent?"Protected device storage is active. An additional backup is downloaded after every save.":"Automatic backups are active. iPadOS has not granted protected storage, so keep the downloaded backup files.";
+    element.textContent=(persistent?"Protected device storage is active. ":"iPadOS has not granted protected storage, so keep the downloaded backup files. ")+backupScheduleText();
     return persistent;
   } catch {
     element.textContent="Automatic backups are active. Storage protection could not be checked.";return false;
@@ -214,8 +221,8 @@ $("observationForm").addEventListener("submit",event=>{event.preventDefault();
   const observation={date:$("date").value,temperature_c:temp,mucus_type:$("mucus").value,disturbed:$("disturbed").checked,pms:$("pms").value==="unknown"?null:$("pms").value==="true",menstrual:$("menstrual").checked,menstrual_flow:$("menstrual").checked?$("flow").value:"NONE",spotting:!$("menstrual").checked&&$("spotting").checked};
   const previous=state.observations.filter(o=>o.date<observation.date).sort((a,b)=>a.date.localeCompare(b.date)).at(-1);
   if(observation.menstrual && previous && !previous.menstrual && state.observations.some(o=>o.menstrual)) state.profile.theoretical=false;
-  state.observations=state.observations.filter(o=>o.date!==observation.date);state.observations.push(observation);state.observations.sort((a,b)=>a.date.localeCompare(b.date));state.lastBackupRequestedAt=new Date().toISOString();
-  try{save(state);downloadBackup();$("setup").style.display="none";$("status").textContent="Observation saved. A complete backup was downloaded to Files.";render(analyze(observation));}
+  state.observations=state.observations.filter(o=>o.date!==observation.date);state.observations.push(observation);state.observations.sort((a,b)=>a.date.localeCompare(b.date));
+  try{const weeklyBackupDue=backupDue();save(state);if(weeklyBackupDue){downloadBackup();$("status").textContent="Observation saved. This week's complete backup was downloaded to Files.";}else{$("status").textContent="Observation saved on this device.";}$("setup").style.display="none";render(analyze(observation));updateStorageStatus();}
   catch{storageError="CycleSeed could not safely save this observation. The existing data has not been intentionally cleared.";$("status").textContent=storageError;updateStorageStatus();}
 });
 $("exportJson").addEventListener("click",downloadBackup);
