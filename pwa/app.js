@@ -17,10 +17,26 @@ const dayDiff = (a,b) => Math.round((dateAtNoon(a)-dateAtNoon(b))/86400000);
 const mean = values => values.reduce((a,b)=>a+b,0)/values.length;
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 
-function emptyState(){ return {version:1,profile:null,observations:[]}; }
-function load(){ try { return {...emptyState(),...JSON.parse(localStorage.getItem(STORAGE_KEY)||"null")}; } catch { return emptyState(); } }
-function save(state){ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }
-let state = load();
+function emptyState(){ return {version:2,profile:null,observations:[]}; }
+function validState(value){ return value&&typeof value==="object"&&(value.profile===null||typeof value.profile==="object")&&Array.isArray(value.observations); }
+function load(){
+  try {
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(raw===null)return {state:emptyState(),error:null};
+    const parsed=JSON.parse(raw);
+    if(!validState(parsed))throw new Error("Invalid stored data");
+    return {state:{...emptyState(),...parsed},error:null};
+  } catch(error){
+    return {state:emptyState(),error:"CycleSeed found unreadable device storage. Nothing has been overwritten. Restore a backup or contact support before entering new data."};
+  }
+}
+function save(nextState){
+  const serialized=JSON.stringify(nextState);
+  localStorage.setItem(STORAGE_KEY,serialized);
+  if(localStorage.getItem(STORAGE_KEY)!==serialized)throw new Error("The saved data could not be verified");
+}
+const loaded=load();
+let state=loaded.state,storageError=loaded.error;
 
 function cycleInfo(observation){
   const sorted=[...state.observations].sort((a,b)=>a.date.localeCompare(b.date));
@@ -111,22 +127,71 @@ function drawCalendar(result){
   $("calendar").innerHTML=months.map(first=>{const last=new Date(first.getFullYear(),first.getMonth()+1,0,12),blanks=(first.getDay()+6)%7;let cells='<span class="day"></span>'.repeat(blanks);for(let d=1;d<=last.getDate();d++){const value=new Date(first.getFullYear(),first.getMonth(),d,12),cycleDay=((dayDiff(iso(value),result.cycle_start)%result.average)+result.average)%result.average+1,phase=phaseForDay(cycleDay,result);cells+=`<span class="day ${phase} ${iso(value)===result.date?'today':''} ${value>current?'future':''}" title="${phase}, cycle day ${cycleDay}">${d}</span>`}return`<div class="month"><h3>${first.toLocaleDateString("en",{month:"long",year:"numeric"})}</h3><div class="week">${["M","T","W","T","F","S","S"].map(x=>`<span>${x}</span>`).join("")}</div><div class="days">${cells}</div></div>`}).join("");
 }
 
-function download(name,type,text){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function backupStamp(){const now=new Date();return `${isoToday()}-${String(now.getHours()).padStart(2,"0")}-${String(now.getMinutes()).padStart(2,"0")}-${String(now.getSeconds()).padStart(2,"0")}`;}
+function download(name,type,text){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement("a");a.href=url;a.download=name;a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function downloadBackup(){download(`cycleseed-backup-${backupStamp()}.json`,"application/json",JSON.stringify(state,null,2));}
 function csv(){const fields=["date","temperature_c","mucus_type","disturbed","pms","menstrual","menstrual_flow","spotting","cycle_id","cycle_day","synthetic_label_fertile","synthetic_ovulation_day","synthetic_phase_label"];const rows=state.observations.map(o=>{const info=cycleInfo(o);return[o.date,o.temperature_c??"",o.mucus_type,o.disturbed,o.pms??"",o.menstrual,o.menstrual_flow,o.spotting??false,"personal-ipad",info.day,"","",""]});return[fields,...rows].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");}
+
+function parseCsv(text){
+  const rows=[];let row=[],field="",quoted=false;
+  for(let i=0;i<text.length;i++){
+    const char=text[i];
+    if(quoted&&char==='"'&&text[i+1]==='"'){field+='"';i++;}
+    else if(char==='"'){quoted=!quoted;}
+    else if(char===","&&!quoted){row.push(field);field="";}
+    else if((char==="\n"||char==="\r")&&!quoted){if(char==="\r"&&text[i+1]==="\n")i++;row.push(field);if(row.some(value=>value!==""))rows.push(row);row=[];field="";}
+    else field+=char;
+  }
+  row.push(field);if(row.some(value=>value!==""))rows.push(row);
+  return rows;
+}
+function boolValue(value){return String(value).trim().toLowerCase()==="true";}
+function stateFromCsv(text){
+  const rows=parseCsv(text);if(rows.length<2)throw new Error("Empty CSV");
+  const headers=rows[0].map(value=>value.trim());
+  for(const required of ["date","mucus_type","disturbed","menstrual"]){if(!headers.includes(required))throw new Error(`Missing ${required}`);}
+  const records=rows.slice(1).map(row=>Object.fromEntries(headers.map((header,index)=>[header,row[index]??""]))).filter(item=>/^\d{4}-\d{2}-\d{2}$/.test(item.date));
+  if(!records.length)throw new Error("No observations");
+  const observations=records.map(item=>({date:item.date,temperature_c:item.temperature_c===""?null:Number(item.temperature_c),mucus_type:item.mucus_type||"DRY",disturbed:boolValue(item.disturbed),pms:item.pms===""?null:boolValue(item.pms),menstrual:boolValue(item.menstrual),menstrual_flow:item.menstrual_flow||(boolValue(item.menstrual)?"MEDIUM":"NONE"),spotting:boolValue(item.spotting)})).sort((a,b)=>a.date.localeCompare(b.date));
+  const firstRecord=records.slice().sort((a,b)=>a.date.localeCompare(b.date))[0],firstDay=Math.max(1,Number(firstRecord.cycle_day)||1);
+  const label=String(firstRecord.synthetic_phase_label||"").toUpperCase(),initialPhase=["MENSTRUATION","FOLLICULAR","OVULATORY","LUTEAL"].includes(label)?label:"UNKNOWN";
+  const profile=state.profile||{anchorDate:iso(addDays(firstRecord.date,1-firstDay)),anchorCycleDay:1,initialPhase,averageCycleLength:30,theoretical:true};
+  return {version:2,profile,observations,restoredFromCsvAt:new Date().toISOString()};
+}
+
+async function updateStorageStatus(requestPersistence=false){
+  const element=$("storageStatus");
+  if(storageError){element.textContent=storageError;return false;}
+  if(!navigator.storage?.persisted){element.textContent="Device storage is active. Automatic local backups are enabled.";return false;}
+  try {
+    let persistent=await navigator.storage.persisted();
+    if(!persistent&&requestPersistence&&navigator.storage.persist)persistent=await navigator.storage.persist();
+    element.textContent=persistent?"Protected device storage is active. An additional backup is downloaded after every save.":"Automatic backups are active. iPadOS has not granted protected storage, so keep the downloaded backup files.";
+    return persistent;
+  } catch {
+    element.textContent="Automatic backups are active. Storage protection could not be checked.";return false;
+  }
+}
 
 $("date").value=isoToday();$("setup").style.display=state.profile?"none":"block";$("flowLabel").style.display="none";
 $("menstrual").addEventListener("change",()=>{if($("menstrual").checked)$("spotting").checked=false;$("flowLabel").style.display=$("menstrual").checked?"grid":"none"});
 $("observationForm").addEventListener("submit",event=>{event.preventDefault();
+  if(storageError)return $("status").textContent=storageError;
+  updateStorageStatus(true);
   if(!state.profile){const day=Number($("initialDay").value),average=Number($("averageLength").value);if(day<1||day>90||average<15||average>90)return $("status").textContent="Check the first-use values.";state.profile={anchorDate:$("date").value,anchorCycleDay:day,initialPhase:$("initialPhase").value,averageCycleLength:average,theoretical:true};}
   const temp=$("temperature").value===""?null:Number($("temperature").value);if(temp!=null&&(temp<34||temp>42))return $("status").textContent="Temperature must be between 34 and 42 °C.";
   const observation={date:$("date").value,temperature_c:temp,mucus_type:$("mucus").value,disturbed:$("disturbed").checked,pms:$("pms").value==="unknown"?null:$("pms").value==="true",menstrual:$("menstrual").checked,menstrual_flow:$("menstrual").checked?$("flow").value:"NONE",spotting:!$("menstrual").checked&&$("spotting").checked};
   const previous=state.observations.filter(o=>o.date<observation.date).sort((a,b)=>a.date.localeCompare(b.date)).at(-1);
   if(observation.menstrual && previous && !previous.menstrual && state.observations.some(o=>o.menstrual)) state.profile.theoretical=false;
-  state.observations=state.observations.filter(o=>o.date!==observation.date);state.observations.push(observation);state.observations.sort((a,b)=>a.date.localeCompare(b.date));save(state);$("setup").style.display="none";$("status").textContent="Observation saved on this device.";render(analyze(observation));
+  state.observations=state.observations.filter(o=>o.date!==observation.date);state.observations.push(observation);state.observations.sort((a,b)=>a.date.localeCompare(b.date));state.lastBackupRequestedAt=new Date().toISOString();
+  try{save(state);downloadBackup();$("setup").style.display="none";$("status").textContent="Observation saved. A complete backup was downloaded to Files.";render(analyze(observation));}
+  catch{storageError="CycleSeed could not safely save this observation. The existing data has not been intentionally cleared.";$("status").textContent=storageError;updateStorageStatus();}
 });
-$("exportJson").addEventListener("click",()=>download(`cycleseed-backup-${isoToday()}.json`,"application/json",JSON.stringify(state,null,2)));
+$("exportJson").addEventListener("click",downloadBackup);
 $("exportCsv").addEventListener("click",()=>download(`cycleseed-observations-${isoToday()}.csv`,"text/csv",csv()));
-$("importJson").addEventListener("change",async event=>{try{const incoming=JSON.parse(await event.target.files[0].text());if(!incoming.profile||!Array.isArray(incoming.observations))throw Error();state=incoming;save(state);location.reload()}catch{alert("This is not a valid CycleSeed backup.")}});
+$("importBackup").addEventListener("change",async event=>{try{const file=event.target.files[0];if(!file)return;const text=await file.text();let incoming;if(file.name.toLowerCase().endsWith(".csv")){incoming=stateFromCsv(text);}else{incoming=JSON.parse(text);if(!incoming.profile||!Array.isArray(incoming.observations))throw Error();}save(incoming);state=incoming;storageError=null;downloadBackup();location.reload()}catch{alert("This is not a valid CycleSeed JSON or CSV backup, or device storage is unavailable.");}finally{event.target.value="";}});
+if(storageError){$("status").textContent=storageError;$("observationForm").querySelectorAll("input, select, button").forEach(element=>element.disabled=true);}
 if(state.observations.length) render(analyze(state.observations.at(-1)));
 window.addEventListener("resize",()=>{if(state.observations.length)drawChart(analyze(state.observations.at(-1)))});
+updateStorageStatus();
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");

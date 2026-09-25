@@ -48,10 +48,12 @@ On the first follow-up, CycleSeed asks for the approximate current cycle day, ap
 
 The `pwa/` directory contains a separate browser-only edition designed for private testing on iPad. It can be hosted free of charge with GitHub Pages and added to the iPad Home Screen from Safari.
 
-- Observations and profile data stay in the browser storage of that iPad.
+- Observations and profile data stay in protected browser storage on that iPad when iPadOS grants persistence.
 - The app works offline after its first successful visit.
-- JSON backup and CSV export make it possible to transfer observations for later research.
-- Removing the app, clearing Safari website data, or losing the iPad can erase local observations, so regular exports are essential.
+- Every **Save and analyze** action also downloads a timestamped JSON backup containing the full profile and observation history.
+- JSON and CycleSeed CSV files can both be restored from the **Restore a backup** control; CSV export remains available for later research.
+- Removing the app, clearing Safari website data, or losing the iPad can still erase browser storage. Keep at least one downloaded backup in Files or another private location.
+- If browser storage is corrupt or unavailable, CycleSeed locks data entry and shows a recovery message instead of silently starting a new profile.
 - The embedded model is a browser-compatible copy of the experimental logistic-regression model; no Python server is involved.
 
 The included GitHub Pages workflow deploys `pwa/` after it is merged into `main` and Pages is configured to use **GitHub Actions** in the repository settings.
